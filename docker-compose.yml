@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  aptly-repo:
+    build: .
+    container_name: aptly-repo-server
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - /data:/data
+      - /data/gpg/private.key:/etc/aptly/private.key:ro  # Mount your private key
+    environment:
+      - TZ=UTC
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

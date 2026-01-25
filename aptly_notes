@@ -1,0 +1,117 @@
+aptly mirror create \
+  -architectures=amd64 \
+  jammy-main \
+  http://archive.ubuntu.com/ubuntu \
+  jammy \
+  main restricted universe multiverse
+
+
+
+
+
+aptly mirror create \
+  -architectures=arm64 \
+  jammy-ports-main \
+  http://ports.ubuntu.com/ubuntu-ports \
+  jammy \
+  main restricted universe multiverse
+
+
+
+
+
+aptly mirror update jammy-main
+aptly mirror update jammy-ports-main
+
+
+
+
+
+aptly snapshot create jammy-main-$(date +%Y%m%d) from mirror jammy-main
+aptly snapshot create jammy-ports-main-$(date +%Y%m%d) from mirror jammy-ports-main
+
+
+
+
+aptly publish snapshot \
+  -distribution=jammy \
+  -component=main \
+  jammy-main-20260124
+
+
+
+
+
+
+aptly publish snapshot \
+  -distribution=jammy \
+  -component=main \
+  jammy-ports-main-20260124
+
+
+
+
+
+
+aptly mirror create \
+  -architectures=amd64 \
+  jammy-backports \
+  http://archive.ubuntu.com/ubuntu \
+  jammy-backports \
+  main restricted universe multiverse
+
+
+
+
+
+aptly mirror create \
+  -architectures=arm64 \
+  jammy-backports-ports \
+  http://ports.ubuntu.com/ubuntu-ports \
+  jammy-backports \
+  main restricted universe multiverse
+
+
+
+
+aptly mirror update jammy-backports
+aptly mirror update jammy-backports-ports
+
+
+
+
+aptly snapshot create jammy-backports-$(date +%Y%m%d) \
+  from mirror jammy-backports
+
+aptly snapshot create jammy-backports-ports-$(date +%Y%m%d) \
+  from mirror jammy-backports-ports
+
+
+
+
+aptly publish snapshot \
+  -distribution=jammy-backports \
+  -component=main \
+  jammy-backports-20260124
+
+
+
+
+aptly publish snapshot \
+  -distribution=jammy-backports \
+  -component=main \
+  jammy-backports-ports-20260124
+
+
+
+
+deb http://<your-repo>:8080 jammy main
+deb http://<your-repo>:8080 jammy-backports main
+
+
+
+
+Repeat above for:
+jammy-updates
+jammy-security
+

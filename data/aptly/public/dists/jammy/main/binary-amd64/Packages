@@ -1,0 +1,27 @@
+Package: sudo
+Priority: optional
+Section: admin
+Installed-Size: 6704
+Maintainer: Debian Sudo Maintainers <sudo@packages.debian.org>
+Architecture: amd64
+Version: 1.9.16p2-3
+Replaces: sudo-ldap
+Depends: libapparmor1 (>= 2.7.0~beta1+bzr1772), libaudit1 (>= 1:2.2.1), libc6 (>= 2.38), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libssl3t64 (>= 3.0.0), zlib1g (>= 1:1.2.0.2), libpam-modules
+Pre-Depends: init-system-helpers (>= 1.54~)
+Conflicts: sudo-ldap
+Filename: pool/main/s/sudo/sudo_1.9.16p2-3_amd64.deb
+Size: 2086624
+MD5sum: f5ba08c0869d426a7a0ed7923c20f8bb
+SHA1: 59384e01fe5fad59e881e4c8ed1d99227abf039a
+SHA256: 68f6b6d88f024e9e01a375342ba04e68e5e56bd62130a755b794029858a37605
+SHA512: 0b2ace74620fc9135970cf82331a512bc20674ccb491d4544184965102536fb021ef391e9a275a06220030a420257b36f7d29ead9241aae49e9d416a8c8ba193
+Description: Provide limited super user privileges to specific users
+ Sudo is a program designed to allow a sysadmin to give limited root
+ privileges to users and log root activity.  The basic philosophy is to give
+ as few privileges as possible but still allow people to get their work done.
+ .
+ This version is built with minimal shared library dependencies, use the
+ sudo-ldap package instead if you need LDAP support for sudoers.
+Homepage: https://www.sudo.ws/
+Multi-Arch: foreign
+
