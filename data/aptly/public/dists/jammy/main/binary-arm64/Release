@@ -1,0 +1,5 @@
+Origin: . jammy
+Label: . jammy
+Archive: jammy
+Architecture: arm64
+Component: main

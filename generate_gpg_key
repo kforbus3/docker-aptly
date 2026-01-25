@@ -1,0 +1,11 @@
+# Generate key
+gpg --batch --generate-key /tmp/aptly-key-batch
+
+# Export with proper permissions
+gpg --export-secret-keys --armor "email@domain.com" > /data/gpg/private.key
+chmod 600 /data/gpg/private.key
+chown $(id -u):$(id -g) /data/gpg/private.key
+
+# Export public key for clients
+gpg --export --armor "email@domain.com" > /data/gpg/public.key
+chmod 644 /data/gpg/public.key
