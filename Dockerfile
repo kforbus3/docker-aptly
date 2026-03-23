@@ -30,6 +30,10 @@ EXPOSE 80
 # Set working directory
 WORKDIR /data
 
+# Environment variables for GPG key generation
+ENV GPG_NAME_REAL="Aptly Repository"
+ENV GPG_NAME_EMAIL="repo@yourdomain.com"
+
 # Default command
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
