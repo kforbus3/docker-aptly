@@ -1,11 +1,28 @@
+#!/bin/bash
+
+# Use environment variables or defaults
+GPG_NAME_REAL=${GPG_NAME_REAL:-Aptly Repository}
+GPG_NAME_EMAIL=${GPG_NAME_EMAIL:-repo@yourdomain.com}
+
+# Create GPG key batch file with configurable values
+cat > /tmp/gpg-batch << EOF
+Key-Type: RSA
+Key-Length: 4096
+Name-Real: $GPG_NAME_REAL
+Name-Email: $GPG_NAME_EMAIL
+Expire-Date: 0
+%no-protection
+%commit
+EOF
+
 # Generate key
-gpg --batch --generate-key /tmp/aptly-key-batch
+gpg --batch --generate-key /tmp/gpg-batch
 
 # Export with proper permissions
-gpg --export-secret-keys --armor "email@domain.com" > /data/gpg/private.key
+gpg --export-secret-keys --armor "$GPG_NAME_EMAIL" > /data/gpg/private.key
 chmod 600 /data/gpg/private.key
 chown $(id -u):$(id -g) /data/gpg/private.key
 
 # Export public key for clients
-gpg --export --armor "email@domain.com" > /data/gpg/public.key
+gpg --export --armor "$GPG_NAME_EMAIL" > /data/gpg/public.key
 chmod 644 /data/gpg/public.key

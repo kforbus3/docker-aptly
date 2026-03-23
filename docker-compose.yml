@@ -12,6 +12,8 @@ services:
       - /data/gpg/private.key:/etc/aptly/private.key:ro  # Mount your private key
     environment:
       - TZ=UTC
+      - GPG_NAME_REAL=Aptly Repository
+      - GPG_NAME_EMAIL=repo@yourdomain.com
     logging:
       driver: "json-file"
       options:

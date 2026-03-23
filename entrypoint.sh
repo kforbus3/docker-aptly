@@ -23,12 +23,12 @@ if [ -f "/etc/aptly/private.key" ] && [ ! -f /data/gpg/aptly-key-imported ]; the
 elif [ ! -f /data/gpg/aptly-key-imported ]; then
     echo "No existing key found, generating new GPG key..."
     
-    # Create GPG key batch file
+    # Create GPG key batch file with configurable values
     cat > /tmp/gpg-batch << EOF
 Key-Type: RSA
 Key-Length: 4096
-Name-Real: Aptly Repository
-Name-Email: repo@yourdomain.com
+Name-Real: ${GPG_NAME_REAL:-Aptly Repository}
+Name-Email: ${GPG_NAME_EMAIL:-repo@yourdomain.com}
 Expire-Date: 0
 %no-protection
 %commit
