@@ -81,7 +81,7 @@ install_docker() {
 # Create required directories
 create_directories() {
     log_info "Creating required directories..."
-    sudo mkdir -p /data/forterra/jammy /data/forterra/focal /data/published /data/aptly /data/gpg
+    sudo mkdir -p /data/packages/dist1 /data/packages/dist2 /data/published /data/aptly /data/gpg
     sudo chown -R $(id -u):$(id -g) /data
     log_info "Directories created successfully."
 }
@@ -139,7 +139,7 @@ main() {
     verify_installation
     
     log_info "Installation completed! Please note:"
-    echo "  - Place your .deb files in /data/forterra/jammy/ or /data/forterra/focal/"
+    echo "  - Place your .deb files in /data/packages/dist1/ or /data/packages/dist2/"
     echo "  - Run 'docker-compose exec aptly-repo update-snapshots.sh' to process packages"
     echo "  - Access your repository at http://YOUR_SERVER_IP/"
     echo "  - See README.md for detailed usage instructions"

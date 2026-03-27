@@ -2,7 +2,7 @@
 curl -fsSL http://your-server/gpg/public.key | sudo gpg --dearmor -o /usr/share/keyrings/aptly-archive-keyring.gpg
 
 # Add repository WITHOUT [trusted=yes] since it's properly signed
-echo "deb [signed-by=/usr/share/keyrings/aptly-archive-keyring.gpg] http://your-server/ jammy-artifacts main" | sudo tee /etc/apt/sources.list.d/custom-artifacts.list
+echo "deb [signed-by=/usr/share/keyrings/aptly-archive-keyring.gpg] http://your-server/ dist1-artifacts main" | sudo tee /etc/apt/sources.list.d/custom-artifacts.list
 
 # Update and install
 sudo apt update

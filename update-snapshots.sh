@@ -16,7 +16,7 @@ fi
 # Function to import deb files into local repository
 import_deb_files() {
     local distro=$1
-    local deb_dir="/data/forterra/$distro"
+    local deb_dir="/data/packages/$distro"
     
     if [ ! -d "$deb_dir" ]; then
         echo "Directory $deb_dir does not exist, skipping..."
@@ -51,8 +51,8 @@ create_and_publish_artifacts() {
     echo "=== Processing $distro artifacts ==="
     
     # Check if local repo exists and has .deb files
-    if [ ! -n "$(find "/data/forterra/$distro" -name "*.deb" -type f 2>/dev/null)" ]; then
-        echo "No .deb files found in /data/forterra/$distro, skipping..."
+    if [ ! -n "$(find "/data/packages/$distro" -name "*.deb" -type f 2>/dev/null)" ]; then
+        echo "No .deb files found in /data/packages/$distro, skipping..."
         return
     fi
     
@@ -91,7 +91,7 @@ create_and_publish_artifacts() {
 }
 
 # Main processing loop for artifacts
-DISTRO_DIRS="/data/forterra/*/"
+DISTRO_DIRS="/data/packages/*/"
 found_distro=false
 
 for dir in $DISTRO_DIRS; do
@@ -106,8 +106,8 @@ for dir in $DISTRO_DIRS; do
 done
 
 if [ "$found_distro" = false ]; then
-    echo "No distribution directories found in /data/forterra/"
-    echo "Please create directories like /data/forterra/jammy/ and /data/forterra/focal/"
+    echo "No distribution directories found in /data/packages/"
+    echo "Please create directories like /data/packages/dist1/ and /data/packages/dist2/"
     echo "and place .deb files in them."
 fi
 
