@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories
-RUN mkdir -p /data/aptly /data/forterra /data/published
+RUN mkdir -p /data/aptly /data/packages /data/published
 
 # Copy configuration files
 COPY aptly.conf /etc/aptly.conf

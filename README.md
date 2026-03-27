@@ -1,13 +1,13 @@
 # Docker Aptly Repository Server
 
-A Docker-based Debian/Ubuntu repository server using Aptly for package management and Nginx for serving packages.
+A Docker-based Debian repository server using Aptly for package management and Nginx for serving packages.
 
 ## Features
 
-- Host your own Debian/Ubuntu package repository
+- Host your own Debian package repository
 - Automated GPG key generation and management
 - Snapshot-based publishing workflow
-- Multiple distribution support (jammy, focal, etc.)
+- Multiple distribution support
 - HTTP health endpoint for monitoring
 - Secure package signing with GPG
 - Automated installation script
@@ -56,7 +56,7 @@ Install Docker and Docker Compose according to your platform:
 Create the required directory structure:
 
 ```bash
-sudo mkdir -p /data/forterra/jammy /data/forterra/focal /data/published /data/aptly /data/gpg
+sudo mkdir -p /data/packages/dist1 /data/packages/dist2 /data/published /data/aptly /data/gpg
 sudo chown -R $(id -u):$(id -g) /data  # Adjust ownership as needed
 ```
 
@@ -64,12 +64,12 @@ sudo chown -R $(id -u):$(id -g) /data  # Adjust ownership as needed
 
 Allow HTTP traffic on port 80:
 
-**Ubuntu/Debian (ufw):**
+**Using ufw:**
 ```bash
 sudo ufw allow 80/tcp
 ```
 
-**CentOS/RHEL (firewalld):**
+**Using firewalld:**
 ```bash
 sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --reload
@@ -150,7 +150,7 @@ docker-compose exec aptly-repo /usr/local/bin/generate_gpg_key
 Place your `.deb` files in the appropriate directories:
 
 ```bash
-sudo cp your-package.deb /data/forterra/jammy/
+sudo cp your-package.deb /data/packages/dist1/
 ```
 
 Process and publish the new packages:
@@ -161,7 +161,7 @@ docker-compose exec aptly-repo update-snapshots.sh
 
 Verify the packages are published:
 ```bash
-curl http://localhost/dists/jammy-artifacts/
+curl http://localhost/dists/dist1-artifacts/
 ```
 
 ### Client Configuration
@@ -175,7 +175,7 @@ curl -fsSL http://YOUR_SERVER_IP/gpg/public.key | sudo gpg --dearmor -o /usr/sha
 
 2. Add repository entry:
 ```bash
-echo "deb [signed-by=/usr/share/keyrings/aptly-archive-keyring.gpg] http://YOUR_SERVER_IP/ jammy-artifacts main" | sudo tee /etc/apt/sources.list.d/custom-artifacts.list
+echo "deb [signed-by=/usr/share/keyrings/aptly-archive-keyring.gpg] http://YOUR_SERVER_IP/ dist1-artifacts main" | sudo tee /etc/apt/sources.list.d/custom-artifacts.list
 ```
 
 3. Update and install packages:
@@ -297,9 +297,9 @@ After running the installation script, you'll need to:
 ```
 /data/
 ├── aptly/          # Aptly database and metadata
-├── forterra/       # Package storage organized by distribution
-│   ├── jammy/      # Ubuntu 22.04 packages
-│   └── focal/      # Ubuntu 20.04 packages
+├── packages/       # Package storage organized by distribution
+│   ├── dist1/      # Distribution 1 packages
+│   └── dist2/      # Distribution 2 packages
 ├── published/      # Published repository files served by Nginx
 └── gpg/            # GPG keys
 ```
