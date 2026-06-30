@@ -1,19 +1,25 @@
-version: '3.8'
-
 services:
   aptly-repo:
     build: .
+    image: docker-aptly
     container_name: aptly-repo-server
     restart: unless-stopped
     ports:
       - "80:80"
     volumes:
-      - /data:/data
-      - /data/gpg/private.key:/etc/aptly/private.key:ro  # Mount your private key
+      # All persistent state lives under /data. To use your own signing key,
+      # place it at ./data/gpg/private.key (host) before first start.
+      - ./data:/data
     environment:
       - TZ=UTC
       - GPG_NAME_REAL=Aptly Repository
       - GPG_NAME_EMAIL=repo@yourdomain.com
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     logging:
       driver: "json-file"
       options:

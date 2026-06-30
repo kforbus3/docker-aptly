@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Docker Aptly Repository Server Installation Script
-# This script automates the setup of the Aptly repository server
+# Docker Aptly Repository Server - installation helper.
+# Sets up directories and brings the stack up with Docker Compose.
 
 set -e
 
@@ -11,139 +11,133 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Logging functions
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+log_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Resolve the Docker Compose command (v2 plugin preferred, v1 fallback).
+COMPOSE=""
+detect_compose() {
+    if docker compose version >/dev/null 2>&1; then
+        COMPOSE="docker compose"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE="docker-compose"
+    fi
 }
 
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Check if running as root
+# Check that we are not running as root on Linux (Docker should run rootless or
+# via the docker group); allow root on macOS where it is harmless.
 check_root() {
     if [[ $EUID -eq 0 ]] && [[ ! "$OSTYPE" == "darwin"* ]]; then
-        log_error "This script should not be run as root. Please run as a regular user with sudo privileges."
+        log_error "Do not run this script as root. Run as a regular user with Docker access."
         exit 1
     fi
 }
 
-# Check if Docker is installed
+# Install Docker if it is missing (Linux only).
+install_docker() {
+    if [ -f /etc/debian_version ]; then
+        sudo apt update
+        sudo apt install -y docker.io docker-compose-plugin
+    elif [ -f /etc/redhat-release ]; then
+        sudo yum install -y docker docker-compose-plugin
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        log_error "macOS detected. Install Docker Desktop from https://www.docker.com/products/docker-desktop and re-run."
+        exit 1
+    else
+        log_error "Unsupported OS. Install Docker manually: https://docs.docker.com/get-docker/"
+        exit 1
+    fi
+    if [[ ! "$OSTYPE" == "darwin"* ]]; then
+        sudo systemctl enable --now docker
+    fi
+}
+
 check_docker() {
-    if ! command -v docker &> /dev/null; then
+    if ! command -v docker >/dev/null 2>&1; then
         log_warn "Docker not found. Installing Docker..."
         install_docker
     else
         log_info "Docker is already installed."
     fi
-    
-    # Check if user is in docker group
-    if ! groups $(whoami) | grep -q docker; then
-        log_warn "User not in docker group. Adding user to docker group..."
-        sudo usermod -aG docker $(whoami)
-        log_info "Please logout and login again to apply group changes, then run this script again."
-        exit 0
+
+    detect_compose
+    if [ -z "$COMPOSE" ]; then
+        log_warn "Docker Compose not found. Installing the compose plugin..."
+        install_docker
+        detect_compose
+    fi
+    if [ -z "$COMPOSE" ]; then
+        log_error "Could not find Docker Compose. Install it and re-run."
+        exit 1
+    fi
+    log_info "Using compose command: $COMPOSE"
+
+    # On Linux, make sure the user can talk to the Docker daemon.
+    if [[ ! "$OSTYPE" == "darwin"* ]] && ! docker info >/dev/null 2>&1; then
+        if ! groups "$(whoami)" | grep -q docker; then
+            log_warn "Adding $(whoami) to the docker group..."
+            sudo usermod -aG docker "$(whoami)"
+            log_info "Log out and back in (or run 'newgrp docker'), then re-run this script."
+            exit 0
+        fi
     fi
 }
 
-# Install Docker
-install_docker() {
-    # Detect OS
-    if [ -f /etc/debian_version ]; then
-        # Debian/Ubuntu
-        sudo apt update
-        sudo apt install -y docker.io docker-compose
-    elif [ -f /etc/redhat-release ]; then
-        # CentOS/RHEL/Fedora
-        sudo yum install -y docker docker-compose
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        log_error "macOS detected. Please install Docker Desktop from https://www.docker.com/products/docker-desktop"
-        log_info "After installing Docker Desktop, please re-run this script."
-        exit 1
-    else
-        log_error "Unsupported OS. Please install Docker manually."
-        log_info "Visit https://docs.docker.com/get-docker/ for installation instructions."
-        exit 1
-    fi
-    
-    # Enable and start Docker (skip on macOS)
-    if [[ ! "$OSTYPE" == "darwin"* ]]; then
-        sudo systemctl enable docker
-        sudo systemctl start docker
-    fi
-}
-
-# Create required directories
 create_directories() {
-    log_info "Creating required directories..."
-    sudo mkdir -p /data/packages/dist1 /data/packages/dist2 /data/published /data/aptly /data/gpg
-    sudo chown -R $(id -u):$(id -g) /data
-    log_info "Directories created successfully."
+    log_info "Creating data directories under ./data ..."
+    mkdir -p ./data/packages/dist1 ./data/packages/dist2 ./data/aptly/public ./data/gpg
+    log_info "Directories created."
 }
 
-# Configure firewall
 configure_firewall() {
-    log_info "Configuring firewall..."
-    
-    # Check for ufw (Ubuntu/Debian)
-    if command -v ufw &> /dev/null; then
-        sudo ufw allow 80/tcp
-        log_info "UFW configured to allow HTTP traffic."
-    # Check for firewalld (CentOS/RHEL)
-    elif command -v firewall-cmd &> /dev/null; then
-        sudo firewall-cmd --permanent --add-service=http
-        sudo firewall-cmd --reload
-        log_info "Firewalld configured to allow HTTP traffic."
+    # Best-effort: open HTTP if a known firewall is present.
+    if command -v ufw >/dev/null 2>&1; then
+        sudo ufw allow 80/tcp && log_info "UFW: allowed HTTP (port 80)."
+    elif command -v firewall-cmd >/dev/null 2>&1; then
+        sudo firewall-cmd --permanent --add-service=http && sudo firewall-cmd --reload
+        log_info "firewalld: allowed HTTP."
     else
-        log_warn "No supported firewall detected. Please configure your firewall manually to allow port 80."
+        log_warn "No supported firewall detected. Open port 80 manually if needed."
     fi
 }
 
-# Build and start Docker containers
 deploy_service() {
-    log_info "Building and starting Docker containers..."
-    docker-compose build
-    docker-compose up -d
-    log_info "Docker containers started successfully."
+    log_info "Building and starting the container..."
+    $COMPOSE build
+    $COMPOSE up -d
+    log_info "Container started."
 }
 
-# Verify installation
 verify_installation() {
     log_info "Verifying installation..."
-    
-    # Wait a moment for containers to start
     sleep 5
-    
-    # Check if service is running
-    if curl -s http://localhost/health | grep -q "OK"; then
-        log_info "Installation verified successfully! Service is running."
+    if curl -fsS http://localhost/health 2>/dev/null | grep -q "OK"; then
+        log_info "Service is healthy."
     else
-        log_warn "Service may still be starting. Please check status with: docker-compose ps"
+        log_warn "Service may still be starting. Check with: $COMPOSE ps"
     fi
 }
 
-# Main installation function
 main() {
-    log_info "Starting Docker Aptly Repository Server Installation..."
-    
+    log_info "Starting Docker Aptly Repository Server installation..."
     check_root
     check_docker
     create_directories
-    configure_firewall
+    [[ "$OSTYPE" == "darwin"* ]] || configure_firewall
     deploy_service
     verify_installation
-    
-    log_info "Installation completed! Please note:"
-    echo "  - Place your .deb files in /data/packages/dist1/ or /data/packages/dist2/"
-    echo "  - Run 'docker-compose exec aptly-repo update-snapshots.sh' to process packages"
-    echo "  - Access your repository at http://YOUR_SERVER_IP/"
-    echo "  - See README.md for detailed usage instructions"
+
+    echo ""
+    log_info "Installation complete. Next steps:"
+    echo "  - Drop .deb files into ./data/packages/dist1/ (or dist2/)"
+    echo "  - Publish them:  $COMPOSE exec aptly-repo update-snapshots.sh"
+    echo "  - Browse the repo at http://YOUR_SERVER_IP/"
+    echo "  - GPG public key at http://YOUR_SERVER_IP/gpg/public.key"
+    echo "  - See README.md for client setup and full usage."
 }
 
-# Run main function
 main "$@"

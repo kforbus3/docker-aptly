@@ -11,8 +11,10 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Create necessary directories
-RUN mkdir -p /data/aptly /data/packages /data/published
+# Create necessary directories.
+# /data/aptly/public is where aptly publishes and what nginx serves; creating it
+# up front lets nginx start cleanly before the first publish.
+RUN mkdir -p /data/aptly/public /data/packages /data/gpg
 
 # Copy configuration files
 COPY aptly.conf /etc/aptly.conf

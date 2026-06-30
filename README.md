@@ -1,327 +1,208 @@
 # Docker Aptly Repository Server
 
-A Docker-based Debian repository server using Aptly for package management and Nginx for serving packages.
+A self-contained, Docker-based **Debian/Ubuntu package repository** powered by
+[aptly](https://www.aptly.info/) and served by nginx. Drop your `.deb` files in a
+folder, run one command, and you have a GPG-signed `apt` repository your machines
+can install from.
+
+![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
+![Docker](https://img.shields.io/badge/docker-compose-blue.svg)
+
+---
+
+## Why
+
+Setting up a signed apt repository by hand (aptly config, GPG keys, publishing,
+a web server) is fiddly. This project bundles all of it into a single container
+with sensible defaults so a homelab or IT ops team can stand one up in minutes.
 
 ## Features
 
-- Host your own Debian package repository
-- Automated GPG key generation and management
-- Snapshot-based publishing workflow
-- Multiple distribution support
-- HTTP health endpoint for monitoring
-- Secure package signing with GPG
-- Automated installation script
+- **One-command deploy** with Docker Compose.
+- **Automatic GPG key generation** on first start (or bring your own key).
+- **Signed publishing** — clients verify package signatures, no `[trusted=yes]`.
+- **Snapshot-based workflow** via `update-snapshots.sh`.
+- **Multiple distributions** — one per folder under `data/packages/`.
+- **GPG public key served over HTTP** for easy client onboarding.
+- **Health endpoint** (`/health`) for monitoring and orchestration.
+- **Persistent state** in a project-local `./data` directory — easy to back up.
+
+## How it works
+
+```
+        ┌──────────────────────────── container ────────────────────────────┐
+.deb ─▶ │ data/packages/<dist>/  ──aptly──▶ snapshot ──publish (GPG sign)──▶ │
+files   │                                              data/aptly/public/    │ ──HTTP──▶ apt clients
+        │                                   nginx serves  /  and  /gpg/      │
+        └────────────────────────────────────────────────────────────────────┘
+```
+
+All state lives under `./data` on the host (bind-mounted to `/data` in the
+container):
+
+| Path | Contents |
+|------|----------|
+| `data/packages/<dist>/` | Your input `.deb` files, one folder per distribution |
+| `data/aptly/` | aptly database + the published repo (`data/aptly/public`, served at `/`) |
+| `data/gpg/` | GPG keyring artifacts and the exported `public.key` (served at `/gpg/`) |
 
 ## Prerequisites
 
-The automated installation script will handle Docker installation if needed. Otherwise, you need:
+- Docker and Docker Compose (the installer can set these up on Debian/Ubuntu/RHEL)
+- On Linux: a user that can talk to the Docker daemon (the `docker` group)
 
-- Docker and Docker Compose installed
-- User account with sudo privileges (Linux only)
-
-## Automated Installation
-
-The easiest way to set up the repository server is to use the provided installation script:
+## Quick start
 
 ```bash
-# Make the script executable
-chmod +x install.sh
+# 1. Build and start
+docker compose up -d            # or: ./install.sh
 
-# Run the installation (will install Docker if needed)
-./install.sh
+# 2. Add packages (one folder per distribution)
+mkdir -p data/packages/dist1
+cp my-package_1.0_amd64.deb data/packages/dist1/
+
+# 3. Publish them (creates a signed snapshot and publishes it)
+docker compose exec aptly-repo update-snapshots.sh
+
+# 4. Verify
+curl -fsS http://localhost/health                # -> OK
+curl -fsS http://localhost/gpg/public.key | head # -> PGP PUBLIC KEY BLOCK
 ```
 
-The script will:
-1. Check if Docker is installed (install if missing)
-2. Add your user to the docker group (Linux only, requires re-login if added)
-3. Create required directories with proper permissions
-4. Configure firewall rules to allow HTTP traffic
-5. Build and start the Docker containers
-6. Verify the installation
+The repository is now served at `http://<host-ip>/` and the distribution is
+named `<dist>-artifacts` (e.g. `dist1` → `dist1-artifacts`).
 
-**Note for macOS users**: The script will detect macOS and provide instructions to install Docker Desktop manually.
+### Automated installer
 
-## Manual Setup (Alternative)
+`./install.sh` wraps the above: it checks for Docker/Compose (installing them on
+supported Linux distros), creates the `data/` folders, optionally opens port 80
+in the firewall, and brings the stack up. It detects `docker compose` (v2) and
+falls back to `docker-compose` (v1).
 
-If you prefer to set up manually or are on an unsupported platform:
+## Adding a client
 
-### 1. Install Docker
-
-Install Docker and Docker Compose according to your platform:
-- [Docker Desktop for Mac/Windows](https://www.docker.com/products/docker-desktop)
-- [Docker Engine for Linux](https://docs.docker.com/engine/install/)
-
-### 2. Create Data Directories
-
-Create the required directory structure:
+On a Debian/Ubuntu machine (full details in [docs/CLIENT_SETUP.md](docs/CLIENT_SETUP.md)):
 
 ```bash
-sudo mkdir -p /data/packages/dist1 /data/packages/dist2 /data/published /data/aptly /data/gpg
-sudo chown -R $(id -u):$(id -g) /data  # Adjust ownership as needed
-```
+curl -fsSL http://YOUR_SERVER_IP/gpg/public.key \
+  | sudo gpg --dearmor -o /usr/share/keyrings/aptly-archive-keyring.gpg
 
-### 3. Configure Firewall (Linux only)
+echo "deb [signed-by=/usr/share/keyrings/aptly-archive-keyring.gpg] http://YOUR_SERVER_IP/ dist1-artifacts main" \
+  | sudo tee /etc/apt/sources.list.d/custom-artifacts.list
 
-Allow HTTP traffic on port 80:
-
-**Using ufw:**
-```bash
-sudo ufw allow 80/tcp
-```
-
-**Using firewalld:**
-```bash
-sudo firewall-cmd --permanent --add-service=http
-sudo firewall-cmd --reload
-```
-
-### 4. Deploy the Service
-
-Build and start the service:
-
-```bash
-docker-compose build
-docker-compose up -d
-```
-
-### 5. Verify Installation
-
-Check if the service is running:
-
-```bash
-curl http://localhost/health  # Should return "OK"
-```
-
-View the published repositories:
-```bash
-curl http://localhost/
+sudo apt update && sudo apt install my-package
 ```
 
 ## Configuration
 
-### Environment Variables
+Set these in `docker-compose.yml` under `environment:`:
 
-You can customize the GPG key generation by setting these environment variables in the docker-compose.yml:
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `GPG_NAME_REAL` | `Aptly Repository` | Real name on the generated GPG key |
+| `GPG_NAME_EMAIL` | `repo@yourdomain.com` | Email/identity on the generated GPG key |
+| `TZ` | `UTC` | Container timezone |
 
-- `GPG_NAME_REAL`: Real name for GPG key (default: "Aptly Repository")
-- `GPG_NAME_EMAIL`: Email for GPG key (default: "repo@yourdomain.com")
+aptly behavior (architectures, dependency following, etc.) lives in
+[`aptly.conf`](aptly.conf).
 
-Example docker-compose.yml modification:
-```yaml
-environment:
-  - TZ=UTC
-  - GPG_NAME_REAL=My Organization
-  - GPG_NAME_EMAIL=packages@myorg.com
-```
+### Bring your own GPG key
 
-### Using Your Own GPG Key
-
-To use your own GPG key instead of the auto-generated one:
-
-1. Export your private key:
-```bash
-gpg --export-secret-keys --armor YOUR_KEY_ID > private.key
-```
-
-2. Place it in `/data/gpg/private.key` on the host
-
-3. Restart the service:
-```bash
-docker-compose down
-docker-compose up -d
-```
-
-## Custom GPG Key Generation Script
-
-If you want more control over GPG key generation, you can use the provided `generate_gpg_key` script:
+To sign with an existing key instead of an auto-generated one, export it and
+place it at `data/gpg/private.key` **before the first start**:
 
 ```bash
-# Edit the script to customize key parameters
-nano generate_gpg_key
-
-# Run the script to generate a new key
-docker-compose exec aptly-repo /usr/local/bin/generate_gpg_key
+gpg --export-secret-keys --armor YOUR_KEY_ID > data/gpg/private.key
+docker compose up -d
 ```
 
-## Usage
+The container imports it and exports the matching public key to
+`data/gpg/public.key`. The included [`generate_gpg_key`](generate_gpg_key) script
+can also create a key pair for you.
 
-### Adding Packages
+> **Never commit `data/gpg/private.key` (or any private key) to git.** The
+> provided `.gitignore` already excludes `data/` and key material.
 
-Place your `.deb` files in the appropriate directories:
+## Operations
 
 ```bash
-sudo cp your-package.deb /data/packages/dist1/
+docker compose up -d            # start
+docker compose down             # stop
+docker compose restart          # restart
+docker compose logs -f          # follow logs
+docker compose ps               # status
+docker compose exec aptly-repo bash   # shell inside the container
 ```
 
-Process and publish the new packages:
+### Publishing updates
+
+After adding or replacing `.deb` files, re-run:
 
 ```bash
-docker-compose exec aptly-repo update-snapshots.sh
+docker compose exec aptly-repo update-snapshots.sh
 ```
 
-Verify the packages are published:
-```bash
-curl http://localhost/dists/dist1-artifacts/
-```
-
-### Client Configuration
-
-On client machines, add the repository:
-
-1. Download and add the GPG key:
-```bash
-curl -fsSL http://YOUR_SERVER_IP/gpg/public.key | sudo gpg --dearmor -o /usr/share/keyrings/aptly-archive-keyring.gpg
-```
-
-2. Add repository entry:
-```bash
-echo "deb [signed-by=/usr/share/keyrings/aptly-archive-keyring.gpg] http://YOUR_SERVER_IP/ dist1-artifacts main" | sudo tee /etc/apt/sources.list.d/custom-artifacts.list
-```
-
-3. Update and install packages:
-```bash
-sudo apt update
-sudo apt install your-package-name
-```
-
-## Management Commands
-
-Start the service:
-```bash
-docker-compose up -d
-```
-
-Stop the service:
-```bash
-docker-compose down
-```
-
-View logs:
-```bash
-docker-compose logs -f
-```
-
-Restart the service:
-```bash
-docker-compose restart
-```
-
-Rebuild the container (after making changes):
-```bash
-docker-compose build
-docker-compose up -d
-```
-
-Execute commands in the container:
-```bash
-docker-compose exec aptly-repo bash
-docker-compose exec aptly-repo update-snapshots.sh
-```
-
-## Maintenance
+Each run imports new packages, creates a timestamped snapshot, and (re)publishes
+the `<dist>-artifacts` distribution with a fresh GPG signature.
 
 ### Backups
 
-Create backups of your data:
+All state is under `./data`:
 
 ```bash
-sudo tar -czf aptly-backup-$(date +%Y%m%d).tar.gz /data
+tar -czf aptly-backup-$(date +%Y%m%d).tar.gz data/
 ```
 
-Or use the provided backup script:
-```bash
-#!/bin/bash
-# backup-aptly.sh
-DATE=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="/backup/aptly"
+Store backups securely — `data/gpg/` contains your signing key.
 
-sudo mkdir -p $BACKUP_DIR
-sudo tar -czf $BACKUP_DIR/aptly-backup-$DATE.tar.gz /data
-echo "Backup completed: $BACKUP_DIR/aptly-backup-$DATE.tar.gz"
-```
+## Security notes
 
-### Monitoring
-
-Check disk usage:
-```bash
-du -sh /data/*
-```
-
-Check container status:
-```bash
-docker-compose ps
-```
-
-View recent logs:
-```bash
-docker-compose logs --tail=50
-```
-
-Monitor system resources:
-```bash
-docker stats aptly-repo-server
-```
+- Packages are **GPG-signed**; clients verify signatures before install.
+- The auto-generated key has **no passphrase** (`%no-protection`) so the
+  container can sign unattended. For higher assurance, generate a key elsewhere
+  and mount it, and restrict access to `data/gpg/`.
+- The container serves **HTTP** on port 80. For anything beyond a trusted
+  network, front it with a TLS-terminating reverse proxy (and consider an auth
+  layer for private repositories).
+- Rotate signing keys periodically and back up `data/` before doing so.
 
 ## Troubleshooting
 
-### Common Issues
+| Symptom | Check |
+|---------|-------|
+| Packages 404 over HTTP | Did you run `update-snapshots.sh` after adding `.deb`s? |
+| `apt update` can't verify | Re-import the key from `/gpg/public.key` on the client |
+| Wrong architecture not seen | Client arch must match the package arch (`amd64`/`arm64`) |
+| Container won't start | `docker compose logs` |
+| Health check | `curl http://localhost/health` should return `OK` |
 
-1. **Packages not showing up**: Ensure you've run `update-snapshots.sh` after adding new packages.
+## Advanced: mirroring upstream Debian
 
-2. **GPG verification errors**: Check that the client has properly imported the public key.
+To additionally mirror upstream Debian suites, see
+[docs/MIRRORING.md](docs/MIRRORING.md).
 
-3. **Permission issues**: Ensure `/data` directory has proper ownership (`chown -R $(id -u):$(id -g) /data`).
-
-4. **Container won't start**: Check logs with `docker-compose logs`.
-
-### Health Checks
-
-Verify service is running:
-```bash
-curl http://localhost/health  # Should return "OK"
-```
-
-List publications:
-```bash
-docker-compose exec aptly-repo aptly publish list
-```
-
-After running the installation script, you'll need to:
-
-1. If the script added your user to the docker group, logout and login again
-2. Place your .deb files in the appropriate directories under `/data/forterra/`
-3. Run the update script to process packages: `docker-compose exec aptly-repo update-snapshots.sh`
-
-## Project Structure
+## Project structure
 
 ```
-/data/
-├── aptly/          # Aptly database and metadata
-├── packages/       # Package storage organized by distribution
-│   ├── dist1/      # Distribution 1 packages
-│   └── dist2/      # Distribution 2 packages
-├── published/      # Published repository files served by Nginx
-└── gpg/            # GPG keys
+docker-aptly/
+├── Dockerfile              # aptly + nginx + supervisor image
+├── docker-compose.yml      # service definition (bind-mounts ./data)
+├── install.sh              # automated setup helper
+├── entrypoint.sh           # GPG key import/generate + startup
+├── update-snapshots.sh     # import .debs, snapshot, sign, publish
+├── generate_gpg_key        # optional standalone key generator
+├── aptly.conf              # aptly configuration
+├── nginx.conf              # serves the published repo and GPG key
+├── supervisord.conf        # runs nginx in the container
+├── docs/
+│   ├── CLIENT_SETUP.md     # configuring apt clients
+│   └── MIRRORING.md        # mirroring upstream Debian (advanced)
+├── LICENSE                 # Apache License 2.0
+├── NOTICE                  # attribution
+└── CONTRIBUTING.md
 ```
 
-## Security Considerations
+## License
 
-1. **Network Security**: 
-   - Only expose necessary ports (port 80 by default)
-   - Use HTTPS in production environments with a reverse proxy
-   - Configure firewall rules appropriately
-
-2. **Package Security**: 
-   - All packages are signed with GPG keys
-   - Clients verify signatures before installation
-   - Regularly rotate GPG keys
-
-3. **Access Control**: 
-   - Consider placing behind authentication proxy for private repositories
-   - Restrict access to the /data directory on the host
-   - Use strong SSH key authentication for server access
-
-4. **Container Security**:
-   - Run containers with minimal privileges
-   - Regularly update base images
-   - Monitor container logs for suspicious activity
+Licensed under the **Apache License, Version 2.0**. See [`LICENSE`](LICENSE) and
+[`NOTICE`](NOTICE).

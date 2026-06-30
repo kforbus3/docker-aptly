@@ -1,0 +1,13 @@
+# Keep the build context small and never bake secrets/state into the image.
+.git
+.gitignore
+data/
+docs/
+*.key
+*.gpg
+*.asc
+*.tar.gz
+README.md
+LICENSE
+NOTICE
+CONTRIBUTING.md
