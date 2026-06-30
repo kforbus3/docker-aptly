@@ -3,15 +3,9 @@ set -e
 
 echo "Starting artifact snapshot update process..."
 
-# Get GPG key ID for signing
-GPG_KEY_ID=""
-if [ -f "/etc/aptly/private.key" ]; then
-    # Use imported key
-    GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format=short | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
-elif [ -f /data/gpg/aptly-key-imported ]; then
-    # Use generated key
-    GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format=short | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
-fi
+# Get the GPG key ID for signing (works for both imported and generated keys,
+# since either way the key lives in the container's keyring).
+GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format=short 2>/dev/null | awk '/^sec/{print $2}' | cut -d'/' -f2 | head -1)
 
 # Function to import deb files into local repository
 import_deb_files() {

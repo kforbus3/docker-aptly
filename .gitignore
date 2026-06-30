@@ -1,0 +1,23 @@
+# Runtime data (packages, aptly db, published repo, GPG keys) — never commit
+/data/
+
+# GPG key material — must never be committed
+*.key
+!*.pub.example
+aptly-private.key
+aptly-public.key
+*.gpg
+*.asc
+
+# Backups
+*.tar.gz
+*.bak
+*.backup
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
