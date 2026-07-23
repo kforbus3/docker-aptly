@@ -7,23 +7,21 @@ GPG_EMAIL="${GPG_NAME_EMAIL:-repo@yourdomain.com}"
 mkdir -p /root/.gnupg /data/gpg /data/packages /data/aptly/public
 chmod 700 /root/.gnupg
 
-# Import an existing GPG key if one was provided, otherwise generate a new one.
-# Drop your own key at /data/gpg/private.key on the host to use it.
-if [ -f "/data/gpg/private.key" ] && [ ! -f /data/gpg/aptly-key-imported ]; then
-    echo "Importing existing GPG key from /data/gpg/private.key..."
-    gpg --import /data/gpg/private.key
+# The container keyring (/root/.gnupg) is ephemeral, so the signing key must be
+# (re)imported from the persistent /data volume on every start. On first boot a
+# key is generated and saved to /data/gpg/private.key; to use your own key,
+# place it there before the first start instead.
+has_secret_key() {
+    gpg --list-secret-keys --with-colons 2>/dev/null | grep -q '^sec:'
+}
 
-    # Determine the imported key ID and export its public half for clients.
-    KEY_ID=$(gpg --list-secret-keys --keyid-format=long | awk '/^sec/{print $2}' | cut -d'/' -f2 | head -1)
-    if [ -n "$KEY_ID" ]; then
-        gpg --export --armor "$KEY_ID" > /data/gpg/public.key
-        echo "GPG key imported successfully (Key ID: $KEY_ID)."
-        echo "Public key exported to /data/gpg/public.key"
-    fi
+if ! has_secret_key && [ -f /data/gpg/private.key ]; then
+    echo "Importing GPG signing key from /data/gpg/private.key..."
+    gpg --batch --import /data/gpg/private.key
+fi
 
-    touch /data/gpg/aptly-key-imported
-elif [ ! -f /data/gpg/aptly-key-imported ]; then
-    echo "No existing key found, generating a new GPG key..."
+if ! has_secret_key; then
+    echo "No signing key found, generating a new GPG key..."
 
     # Create a GPG key batch file with configurable values.
     cat > /tmp/gpg-batch << EOF
@@ -39,13 +37,18 @@ EOF
     gpg --batch --generate-key /tmp/gpg-batch
     rm -f /tmp/gpg-batch
 
-    # Export the public key for distribution to clients.
-    gpg --export --armor "$GPG_EMAIL" > /data/gpg/public.key
-
-    touch /data/gpg/aptly-key-imported
-    echo "GPG key generated successfully!"
-    echo "Public key exported to /data/gpg/public.key"
+    # Persist the private key so it survives container recreation.
+    gpg --export-secret-keys --armor "$GPG_EMAIL" > /data/gpg/private.key
+    chmod 600 /data/gpg/private.key
+    echo "GPG key generated; private key saved to /data/gpg/private.key"
 fi
+
+# Export (or refresh) the public half for clients, served at /gpg/public.key.
+KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec:/{print $5; exit}')
+gpg --export --armor "$KEY_ID" > /data/gpg/public.key
+chmod 644 /data/gpg/public.key
+echo "GPG signing key ready (Key ID: $KEY_ID)."
+echo "Public key exported to /data/gpg/public.key"
 
 echo "Aptly + Nginx container is ready!"
 echo "Repositories will be served at http://<host-ip>/"

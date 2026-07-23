@@ -33,7 +33,7 @@ with sensible defaults so a homelab or IT ops team can stand one up in minutes.
         ┌──────────────────────────── container ────────────────────────────┐
 .deb ─▶ │ data/packages/<dist>/  ──aptly──▶ snapshot ──publish (GPG sign)──▶ │
 files   │                                              data/aptly/public/    │ ──HTTP──▶ apt clients
-        │                                   nginx serves  /  and  /gpg/      │
+        │                                   nginx serves  /  and  /gpg/public.key      │
         └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -44,7 +44,7 @@ container):
 |------|----------|
 | `data/packages/<dist>/` | Your input `.deb` files, one folder per distribution |
 | `data/aptly/` | aptly database + the published repo (`data/aptly/public`, served at `/`) |
-| `data/gpg/` | GPG keyring artifacts and the exported `public.key` (served at `/gpg/`) |
+| `data/gpg/` | Signing key material: `private.key` (never served) and `public.key` (served at `/gpg/public.key`) |
 
 ## Prerequisites
 
@@ -117,8 +117,10 @@ docker compose up -d
 ```
 
 The container imports it and exports the matching public key to
-`data/gpg/public.key`. The included [`generate_gpg_key`](generate_gpg_key) script
-can also create a key pair for you.
+`data/gpg/public.key`. If no key is provided, one is generated on first start
+and persisted to `data/gpg/private.key`, so signing survives container
+recreation. Only `public.key` is served over HTTP. The included
+[`generate_gpg_key`](generate_gpg_key) script can also create a key pair for you.
 
 > **Never commit `data/gpg/private.key` (or any private key) to git.** The
 > provided `.gitignore` already excludes `data/` and key material.
@@ -144,6 +146,21 @@ docker compose exec aptly-repo update-snapshots.sh
 
 Each run imports new packages, creates a timestamped snapshot, and (re)publishes
 the `<dist>-artifacts` distribution with a fresh GPG signature.
+
+### Snapshot retention
+
+Every publish creates a new timestamped snapshot. By default the **5 most
+recent** snapshots per distribution are kept and older ones are pruned (then
+`aptly db cleanup` reclaims their disk). Tune this with the `SNAPSHOT_RETENTION`
+environment variable in `docker-compose.yml`:
+
+| Value | Behaviour |
+|-------|-----------|
+| `5` (default) | Keep the 5 newest snapshots per distribution |
+| `20` | Keep the 20 newest (longer rollback history, more disk) |
+| `0` | Keep **every** snapshot forever (no pruning) |
+
+The currently published snapshot is always retained regardless of the setting.
 
 ### Backups
 
