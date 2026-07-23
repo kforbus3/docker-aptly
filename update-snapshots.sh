@@ -15,6 +15,22 @@ if [ -z "$GPG_KEY_ID" ]; then
     exit 1
 fi
 
+# Snapshot retention: how many of the most-recent snapshots to keep per
+# distribution after each publish. 0 keeps every snapshot forever. Override via
+# the SNAPSHOT_RETENTION environment variable (e.g. in docker-compose.yml).
+SNAPSHOT_RETENTION="${SNAPSHOT_RETENTION:-5}"
+case "$SNAPSHOT_RETENTION" in
+    ''|*[!0-9]*)
+        echo "WARN: SNAPSHOT_RETENTION='$SNAPSHOT_RETENTION' is not a non-negative integer; keeping all snapshots."
+        SNAPSHOT_RETENTION=0
+        ;;
+esac
+if [ "$SNAPSHOT_RETENTION" -eq 0 ]; then
+    echo "Snapshot retention: keeping all snapshots (SNAPSHOT_RETENTION=0)."
+else
+    echo "Snapshot retention: keeping the $SNAPSHOT_RETENTION most recent snapshot(s) per distribution."
+fi
+
 # Function to import deb files into local repository
 import_deb_files() {
     local distro=$1
@@ -88,12 +104,19 @@ create_and_publish_artifacts() {
 
     echo "Signed publication for $artifact_distro created successfully!"
 
-    # Drop superseded snapshots for this distro so they don't pile up forever.
-    aptly snapshot list -raw 2>/dev/null | grep "^${distro}-artifacts-snapshot-" | grep -vF "$snapshot_name" | \
-    while read old_snapshot; do
-        echo "Dropping superseded snapshot $old_snapshot..."
-        aptly snapshot drop "$old_snapshot" 2>/dev/null || true
-    done
+    # Apply snapshot retention: keep the N most recent snapshots for this distro
+    # (names embed a sortable YYYYMMDD_HHMMSS timestamp), drop the rest. Skipped
+    # entirely when retention is 0 (keep forever). The just-published snapshot is
+    # always among the newest and is protected from dropping regardless.
+    if [ "$SNAPSHOT_RETENTION" -gt 0 ]; then
+        aptly snapshot list -raw 2>/dev/null | grep "^${distro}-artifacts-snapshot-" \
+            | sort -r | tail -n +"$((SNAPSHOT_RETENTION + 1))" | \
+        while read old_snapshot; do
+            [ "$old_snapshot" = "$snapshot_name" ] && continue
+            echo "Dropping snapshot $old_snapshot (beyond retention of $SNAPSHOT_RETENTION)..."
+            aptly snapshot drop "$old_snapshot" 2>/dev/null || true
+        done
+    fi
 }
 
 # Main processing loop for artifacts

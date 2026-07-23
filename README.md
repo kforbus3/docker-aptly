@@ -147,6 +147,21 @@ docker compose exec aptly-repo update-snapshots.sh
 Each run imports new packages, creates a timestamped snapshot, and (re)publishes
 the `<dist>-artifacts` distribution with a fresh GPG signature.
 
+### Snapshot retention
+
+Every publish creates a new timestamped snapshot. By default the **5 most
+recent** snapshots per distribution are kept and older ones are pruned (then
+`aptly db cleanup` reclaims their disk). Tune this with the `SNAPSHOT_RETENTION`
+environment variable in `docker-compose.yml`:
+
+| Value | Behaviour |
+|-------|-----------|
+| `5` (default) | Keep the 5 newest snapshots per distribution |
+| `20` | Keep the 20 newest (longer rollback history, more disk) |
+| `0` | Keep **every** snapshot forever (no pruning) |
+
+The currently published snapshot is always retained regardless of the setting.
+
 ### Backups
 
 All state is under `./data`:

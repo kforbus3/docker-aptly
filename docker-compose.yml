@@ -14,6 +14,8 @@ services:
       - TZ=UTC
       - GPG_NAME_REAL=Aptly Repository
       - GPG_NAME_EMAIL=repo@yourdomain.com
+      # Snapshots kept per distribution after each publish (0 = keep forever).
+      - SNAPSHOT_RETENTION=5
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost/health"]
       interval: 30s
