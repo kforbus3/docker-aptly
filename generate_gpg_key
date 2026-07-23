@@ -3,6 +3,10 @@
 # Use environment variables or defaults
 GPG_NAME_REAL=${GPG_NAME_REAL:-Aptly Repository}
 GPG_NAME_EMAIL=${GPG_NAME_EMAIL:-repo@yourdomain.com}
+# Where to write the exported keys (defaults to the container's data volume;
+# set GPG_OUT_DIR when running this standalone on a host).
+GPG_OUT_DIR=${GPG_OUT_DIR:-/data/gpg}
+mkdir -p "$GPG_OUT_DIR"
 
 # Create GPG key batch file with configurable values
 cat > /tmp/gpg-batch << EOF
@@ -19,10 +23,10 @@ EOF
 gpg --batch --generate-key /tmp/gpg-batch
 
 # Export with proper permissions
-gpg --export-secret-keys --armor "$GPG_NAME_EMAIL" > /data/gpg/private.key
-chmod 600 /data/gpg/private.key
-chown $(id -u):$(id -g) /data/gpg/private.key
+gpg --export-secret-keys --armor "$GPG_NAME_EMAIL" > "$GPG_OUT_DIR/private.key"
+chmod 600 "$GPG_OUT_DIR/private.key"
+chown $(id -u):$(id -g) "$GPG_OUT_DIR/private.key"
 
 # Export public key for clients
-gpg --export --armor "$GPG_NAME_EMAIL" > /data/gpg/public.key
-chmod 644 /data/gpg/public.key
+gpg --export --armor "$GPG_NAME_EMAIL" > "$GPG_OUT_DIR/public.key"
+chmod 644 "$GPG_OUT_DIR/public.key"

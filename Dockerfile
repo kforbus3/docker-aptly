@@ -1,4 +1,4 @@
-FROM debian:bullseye-slim
+FROM debian:trixie-slim
 
 # Install required packages
 RUN apt-get update && apt-get install -y \
@@ -36,6 +36,5 @@ WORKDIR /data
 ENV GPG_NAME_REAL="Aptly Repository"
 ENV GPG_NAME_EMAIL="repo@yourdomain.com"
 
-# Default command
+# entrypoint.sh prepares the GPG key, then execs supervisord itself.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

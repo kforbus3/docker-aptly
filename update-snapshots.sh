@@ -5,7 +5,15 @@ echo "Starting artifact snapshot update process..."
 
 # Get the GPG key ID for signing (works for both imported and generated keys,
 # since either way the key lives in the container's keyring).
-GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format=short 2>/dev/null | awk '/^sec/{print $2}' | cut -d'/' -f2 | head -1)
+GPG_KEY_ID=$(gpg --list-secret-keys --with-colons 2>/dev/null | awk -F: '/^sec:/{print $5; exit}')
+
+# Refuse to publish unsigned: clients configured per the docs verify signatures,
+# so an unsigned publish would break every `apt update` against this repo.
+if [ -z "$GPG_KEY_ID" ]; then
+    echo "ERROR: no GPG secret key found in the container keyring; cannot sign."
+    echo "Restart the container to (re)import the key from /data/gpg/private.key."
+    exit 1
+fi
 
 # Function to import deb files into local repository
 import_deb_files() {
@@ -23,14 +31,19 @@ import_deb_files() {
         aptly repo create -distribution=local -component=main "local-$distro"
     fi
     
-    # Import new .deb files
+    # Import new .deb files. Identify packages by their control-file metadata
+    # (package_version_arch), not the filename, so renamed files are still
+    # deduplicated correctly against the repo's package list.
     echo "Checking for new .deb files in $deb_dir..."
+    local repo_packages
+    repo_packages=$(aptly repo show -with-packages "local-$distro")
     find "$deb_dir" -name "*.deb" -type f | while read deb_file; do
-        if ! aptly repo show "local-$distro" | grep -q "$(basename "$deb_file")"; then
+        pkg_key=$(dpkg-deb --show --showformat '${Package}_${Version}_${Architecture}' "$deb_file" 2>/dev/null || true)
+        if [ -n "$pkg_key" ] && echo "$repo_packages" | grep -qF "$pkg_key"; then
+            echo "$(basename "$deb_file") ($pkg_key) already imported, skipping..."
+        else
             echo "Importing $(basename "$deb_file") into local-$distro..."
             aptly repo add "local-$distro" "$deb_file"
-        else
-            echo "$(basename "$deb_file") already imported, skipping..."
         fi
     done
 }
@@ -70,18 +83,17 @@ create_and_publish_artifacts() {
     fi
     
     # Create new publication with GPG signing
-    echo "Creating new signed publication for $artifact_distro..."
-    
-    if [ ! -z "$GPG_KEY_ID" ]; then
-        echo "Using GPG key: $GPG_KEY_ID"
-        echo "Executing: aptly publish snapshot -distribution=$artifact_distro -gpg-key=$GPG_KEY_ID $snapshot_name ."
-        aptly publish snapshot -distribution="$artifact_distro" -gpg-key="$GPG_KEY_ID" "$snapshot_name" .
-    else
-        echo "Executing: aptly publish snapshot -distribution=$artifact_distro $snapshot_name ."
-        aptly publish snapshot -distribution="$artifact_distro" "$snapshot_name" .
-    fi
-    
+    echo "Creating new signed publication for $artifact_distro using key $GPG_KEY_ID..."
+    aptly publish snapshot -distribution="$artifact_distro" -gpg-key="$GPG_KEY_ID" "$snapshot_name" .
+
     echo "Signed publication for $artifact_distro created successfully!"
+
+    # Drop superseded snapshots for this distro so they don't pile up forever.
+    aptly snapshot list -raw 2>/dev/null | grep "^${distro}-artifacts-snapshot-" | grep -vF "$snapshot_name" | \
+    while read old_snapshot; do
+        echo "Dropping superseded snapshot $old_snapshot..."
+        aptly snapshot drop "$old_snapshot" 2>/dev/null || true
+    done
 }
 
 # Main processing loop for artifacts
@@ -104,6 +116,11 @@ if [ "$found_distro" = false ]; then
     echo "Please create directories like /data/packages/dist1/ and /data/packages/dist2/"
     echo "and place .deb files in them."
 fi
+
+# Reclaim space from dropped snapshots and unreferenced packages.
+echo ""
+echo "Cleaning up aptly database..."
+aptly db cleanup
 
 echo ""
 echo "Artifact snapshot update process completed!"
