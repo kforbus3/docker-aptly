@@ -1,5 +1,10 @@
 # Docker Aptly Repository Server
 
+> **Archived (2026-09-25).** This project is superseded by
+> [`aptlywebui`](https://github.com/kforbus3/aptlywebui), which includes the same
+> aptly engine and nginx repo server plus a web UI for mirrors, snapshots, uploads,
+> signing and scheduled syncs. This repository is kept read-only for reference.
+
 A self-contained, Docker-based **Debian/Ubuntu package repository** powered by
 [aptly](https://www.aptly.info/) and served by nginx. Drop your `.deb` files in a
 folder, run one command, and you have a GPG-signed `apt` repository your machines
